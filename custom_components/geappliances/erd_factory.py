@@ -41,17 +41,19 @@ class ERDFactory:
         """Generate an entity configuration based on the ERD and appliance type."""
         config_list = []
         if (erd_def := await self._data_source.get_erd_def(erd)) is not None:
-            config_list = [
-                await self._config_factory.build_config(
-                    device_name,
-                    erd,
-                    erd_def["name"],
-                    erd_def.get("description", ""),
-                    field,
-                    "write" in erd_def["operations"],
-                )
-                for field in erd_def["data"]
-            ]
+            status_pair = await self._data_source.get_erd_status_pair(erd)
+            if status_pair is None or status_pair["request"] == erd:
+                config_list = [
+                    await self._config_factory.build_config(
+                        device_name,
+                        erd,
+                        status_pair["name"] if status_pair else erd_def["name"],
+                        erd_def.get("description", ""),
+                        field,
+                        "write" in erd_def["operations"],
+                    )
+                    for field in erd_def["data"]
+                ]
         else:
             _LOGGER.error("Could not find ERD %s", f"{erd:#06x}")
 
@@ -63,9 +65,24 @@ class ERDFactory:
         """Set up all ERDs in the list so entities know how to interact with them."""
         for erd in erd_api_list:
             erd_int = int(erd["erd"], base=16)
-            await self._data_source.add_supported_erd_to_device(
-                device_name, erd_int, None
-            )
+            status_pair = await self._data_source.get_erd_status_pair(erd_int)
+            if status_pair:
+                if not await self._data_source.erd_has_subscribers(
+                    device_name, status_pair["request"]
+                ):
+                    await self._data_source.add_supported_erd_to_device(
+                        device_name, status_pair["request"], None
+                    )
+                if not await self._data_source.erd_has_subscribers(
+                    device_name, status_pair["status"]
+                ):
+                    await self._data_source.add_supported_erd_to_device(
+                        device_name, status_pair["status"], None
+                    )
+            else:
+                await self._data_source.add_supported_erd_to_device(
+                    device_name, erd_int, None
+                )
             if not await self._data_source.erd_has_subscribers(device_name, erd_int):
                 if await self._special_erd_coordinator.is_special_erd(erd_int):
                     entity_configs = (

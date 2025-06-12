@@ -68,6 +68,13 @@ def given_the_appliance_api_erd_defs_are(erd_defs: str, hass: HomeAssistant) -> 
     ]._data_source._appliance_api_erd_definitions = json.loads(erd_defs)["erds"]
 
 
+def given_the_status_pair_dict_is(status_pair_str: str, hass: HomeAssistant) -> None:
+    """Set the status pair dictionary for the integration."""
+    hass.data[DOMAIN][DISCOVERY]._data_source._status_pair_dict = json.loads(
+        status_pair_str
+    )
+
+
 def given_the_special_erd_map_is(special_erd_map: dict, hass: HomeAssistant) -> None:
     """Set the special ERD map for the integration."""
     hass.data[DOMAIN][

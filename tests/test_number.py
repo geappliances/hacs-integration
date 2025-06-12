@@ -15,6 +15,7 @@ from .common import (
     given_the_appliance_api_erd_defs_are,
     given_the_appliance_api_is,
     given_the_erd_is_set_to,
+    given_the_status_pair_dict_is,
     the_mqtt_topic_value_should_be,
     when_the_erd_is_set_to,
 )
@@ -67,7 +68,9 @@ APPLIANCE_API_JSON = """
                         { "erd": "0x0019", "name": "Voltage Test", "length": 1 },
                         { "erd": "0x0020", "name": "Frequency Test", "length": 1 },
                         { "erd": "0x0021", "name": "Scale Factor Test", "length": 8 },
-                        { "erd": "0x0022", "name": "Scale Factor Description Test", "length": 1 }
+                        { "erd": "0x0022", "name": "Scale Factor Description Test", "length": 1 },
+                        { "erd": "0x00023", "name": "Test Pair Status", "length": 1 },
+                        { "erd": "0x00024", "name": "Test Pair Request", "length": 1 }
                     ],
                     "features": []
                 }
@@ -428,9 +431,50 @@ APPLIANCE_API_DEFINTION_JSON = """
                     "size": 1
                 }
             ]
+        },
+        {
+            "name": "Test Pair Status",
+            "id": "0x0023",
+            "operations": ["read", "write"],
+            "data": [
+                {
+                    "name": "Test Number",
+                    "type": "u8",
+                    "offset": 0,
+                    "size": 1
+                }
+            ]
+        },
+        {
+            "name": "Test Pair Request",
+            "id": "0x0024",
+            "operations": ["read", "write"],
+            "data": [
+                {
+                    "name": "Test Number",
+                    "type": "u8",
+                    "offset": 0,
+                    "size": 1
+                }
+            ]
         }
     ]
 }"""
+
+STATUS_PAIR_DICT = """
+{
+    "0x0023": {
+        "name": "Test Pair",
+        "status": 35,
+        "request": 36
+    },
+    "0x0024": {
+        "name": "Test Pair",
+        "status": 35,
+        "request": 36
+    }
+}
+"""
 
 
 @pytest.fixture(autouse=True)
@@ -444,6 +488,7 @@ async def initialize(
         await given_integration_is_initialized(hass, mqtt_mock)
     given_the_appliance_api_is(APPLIANCE_API_JSON, hass)
     given_the_appliance_api_erd_defs_are(APPLIANCE_API_DEFINTION_JSON, hass)
+    given_the_status_pair_dict_is(STATUS_PAIR_DICT, hass)
     await given_the_erd_is_set_to(0x0092, "0000 0001 0000 0001", hass)
     await given_the_erd_is_set_to(0x0093, "0000 0001 0000 0000", hass)
 
@@ -599,22 +644,48 @@ class TestNumber:
         the_mqtt_topic_value_should_be(0x0021, "FF00FF0000FF0000", mqtt_mock)
         the_number_value_should_be("number.scale_factor_test_field_5", "0.255", hass)
 
+    async def test_sets_erd_with_correct_scaled_value_description(
+        self, hass: HomeAssistant, mqtt_mock: MqttMockHAClient
+    ) -> None:
+        """Test setting ERD with the correct scaled value description."""
+        await given_the_erd_is_set_to(0x0022, "FF", hass)
+        the_number_value_should_be(
+            "number.scale_factor_description_test_scaled_by_10", "25.5", hass
+        )
 
-async def test_sets_erd_with_correct_scaled_value_description(
-    hass: HomeAssistant, mqtt_mock: MqttMockHAClient
-) -> None:
-    """Test setting ERD with the correct scaled value description."""
-    await given_the_erd_is_set_to(0x0022, "FF", hass)
-    the_number_value_should_be(
-        "number.scale_factor_description_test_scaled_by_10", "25.5", hass
-    )
+        await when_the_number_is_set_to(
+            "number.scale_factor_description_test_scaled_by_10", 20.0, hass
+        )
+        the_number_value_should_be(
+            "number.scale_factor_description_test_scaled_by_10", "20.0", hass
+        )
 
-    await when_the_number_is_set_to(
-        "number.scale_factor_description_test_scaled_by_10", 20.0, hass
-    )
-    the_number_value_should_be(
-        "number.scale_factor_description_test_scaled_by_10", "20.0", hass
-    )
+    async def test_publishes_to_request_erd_and_does_not_update_paired_number(
+        self, hass: HomeAssistant, mqtt_mock: MqttMockHAClient
+    ) -> None:
+        """Test paired number, when set, updates the request ERD, but not the status ERD or number itself."""
+        await when_the_erd_is_set_to(0x0023, "00", hass)
+        await when_the_erd_is_set_to(0x0024, "00", hass)
+        the_number_value_should_be("number.test_pair_test_number", "0", hass)
+
+        await when_the_number_is_set_to("number.test_pair_test_number", 255.0, hass)
+        the_mqtt_topic_value_should_be(0x0024, "FF", mqtt_mock)
+        the_number_value_should_be("number.test_pair_test_number", "0", hass)
+
+        await when_the_number_is_set_to("number.test_pair_test_number", 0, hass)
+        the_mqtt_topic_value_should_be(0x0024, "00", mqtt_mock)
+        the_number_value_should_be("number.test_pair_test_number", "0", hass)
+
+    async def test_status_erd_updates_paired_number(
+        self, hass: HomeAssistant, mqtt_mock: MqttMockHAClient
+    ) -> None:
+        """Test number updates paired number on status ERD update."""
+        await when_the_erd_is_set_to(0x0023, "00", hass)
+        await when_the_erd_is_set_to(0x0024, "00", hass)
+        the_number_value_should_be("number.test_pair_test_number", "0", hass)
+
+        await when_the_erd_is_set_to(0x0023, "FF", hass)
+        the_number_value_should_be("number.test_pair_test_number", "255", hass)
 
 
 def the_device_class_should_be(

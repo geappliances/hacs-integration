@@ -2,6 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 import json
+import re
 from typing import Any
 
 from ..const import Erd
@@ -30,6 +31,57 @@ class DataSource:
             appliance_api_erd_definitions
         )["erds"]
         self._mqtt_client = mqtt_client
+
+        self._create_status_pair_dict()
+
+    def _create_status_pair_dict(self):
+        """Create a mapping of status/request ERD pairs based on their names and data fields."""
+
+        def strip_name_field(data):
+            """Return a list of dicts with 'name' key removed from each dict."""
+            return [{k: v for k, v in item.items() if k != "name"} for item in data]
+
+        self._status_pair_dict = {}
+        temp_dict = {}
+
+        status_pair_mapping = {
+            "status": re.compile(
+                r"\bStatus\b|\bActual\b|\bState\b|\bCurrent\b", re.IGNORECASE
+            ),
+            "request": re.compile(
+                r"\bRequest\b|\bRequested\b|\bDesired\b", re.IGNORECASE
+            ),
+        }
+
+        for erd in self._appliance_api_erd_definitions:
+            name = erd["name"]
+            for key, pattern in status_pair_mapping.items():
+                if pattern.search(name):
+                    base_name = pattern.sub("", name)
+                    base_name = re.sub(r"[^\w\s]", "", base_name)
+                    base_name = re.sub(r"  ", " ", base_name).strip()
+                    if base_name not in temp_dict:
+                        temp_dict[base_name] = {}
+                    temp_dict[base_name][key] = {
+                        "id": erd["id"],
+                        "data": erd.get("data", []),
+                    }
+
+        for base_name, pair in temp_dict.items():
+            if "status" in pair and "request" in pair:
+                status_data = strip_name_field(pair["status"]["data"])
+                request_data = strip_name_field(pair["request"]["data"])
+                if status_data == request_data:
+                    self._status_pair_dict[pair["status"]["id"]] = {
+                        "name": base_name,
+                        "status": int(pair["status"]["id"], 16),
+                        "request": int(pair["request"]["id"], 16),
+                    }
+                    self._status_pair_dict[pair["request"]["id"]] = {
+                        "name": base_name,
+                        "status": int(pair["status"]["id"], 16),
+                        "request": int(pair["request"]["id"], 16),
+                    }
 
     async def add_device(self, device_name: str, device_id: str) -> None:
         """Add a device to the data source. Does nothing if the device already exists in the data source."""
@@ -211,3 +263,7 @@ class DataSource:
             )
 
         return None
+
+    async def get_erd_status_pair(self, erd: Erd) -> dict[str, Any] | None:
+        """Return the status/request pair dict if the given ERD is part of a status/request pair, otherwise None."""
+        return self._status_pair_dict.get(f"{erd:#06x}", None)

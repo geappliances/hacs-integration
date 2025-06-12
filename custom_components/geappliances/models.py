@@ -21,6 +21,7 @@ class GeaEntityConfig:
     platform: str
     data_source: DataSource
     erd: Erd
+    status_erd: Erd | None
     offset: int
     size: int
 

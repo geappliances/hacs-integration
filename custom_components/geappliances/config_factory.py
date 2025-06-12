@@ -104,6 +104,7 @@ class ConfigFactory:
         platform: str,
     ) -> GeaEntityConfig:
         """Return a GeaEntity config."""
+        status_pair = await self._data_source.get_erd_status_pair(erd)
         return GeaEntityConfig(
             await self.get_unique_id(device_name, erd, field),
             (await self._data_source.get_device(device_name))[CONF_DEVICE_ID],
@@ -112,6 +113,7 @@ class ConfigFactory:
             platform,
             self._data_source,
             erd,
+            status_pair["status"] if status_pair else None,
             field["offset"],
             field["size"],
         )
@@ -137,6 +139,7 @@ class ConfigFactory:
             base.platform,
             base.data_source,
             base.erd,
+            base.status_erd,
             base.offset,
             base.size,
             bit_mask,
@@ -171,6 +174,7 @@ class ConfigFactory:
             base.platform,
             base.data_source,
             base.erd,
+            base.status_erd,
             base.offset,
             base.size,
             device_class,
@@ -200,6 +204,7 @@ class ConfigFactory:
             base.platform,
             base.data_source,
             base.erd,
+            base.status_erd,
             base.offset,
             base.size,
             await SelectConfigAttributes.get_enum_values(field),
@@ -233,6 +238,7 @@ class ConfigFactory:
             base.platform,
             base.data_source,
             base.erd,
+            base.status_erd,
             base.offset,
             base.size,
             device_class,
@@ -268,6 +274,7 @@ class ConfigFactory:
             base.platform,
             base.data_source,
             base.erd,
+            base.status_erd,
             base.offset,
             base.size,
             bit_mask,
@@ -289,6 +296,7 @@ class ConfigFactory:
             base.platform,
             base.data_source,
             base.erd,
+            base.status_erd,
             base.offset,
             base.size,
             field["type"] == "raw",
@@ -310,6 +318,7 @@ class ConfigFactory:
             base.platform,
             base.data_source,
             base.erd,
+            base.status_erd,
             base.offset,
             base.size,
             "write" not in field["operations"],

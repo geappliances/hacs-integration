@@ -3,6 +3,8 @@
 import logging
 from unittest.mock import MagicMock
 
+from numpy import empty
+
 from custom_components.geappliances.const import Erd
 from custom_components.geappliances.erd_factory import ERDFactory
 from custom_components.geappliances.ha_compatibility.data_source import DataSource
@@ -11,7 +13,11 @@ from custom_components.geappliances.ha_compatibility.mqtt_client import GeaMQTTC
 from custom_components.geappliances.ha_compatibility.registry_updater import (
     RegistryUpdater,
 )
-from custom_components.geappliances.models import GeaBinarySensorConfig, GeaEntityConfig
+from custom_components.geappliances.models import (
+    GeaBinarySensorConfig,
+    GeaEntityConfig,
+    GeaSwitchConfig,
+)
 import pytest
 
 from homeassistant.const import Platform
@@ -46,7 +52,9 @@ APPLIANCE_API_JSON = """
             "versions": {
                 "1": {
                     "required": [
-                        { "erd": "0x0004", "name": "Multi Field Test", "length": 2 }
+                        { "erd": "0x0004", "name": "Multi Field Test", "length": 2 },
+                        { "erd": "0x0005", "name": "Test Pair Request", "length": 1 },
+                        { "erd": "0x0006", "name": "Test Pair Status", "length": 1 }
                     ],
                     "features": []
                 }
@@ -112,6 +120,32 @@ APPLIANCE_API_DEFINTION_JSON = """
                     "name": "Field Two",
                     "type": "bool",
                     "offset": 1,
+                    "size": 1
+                }
+            ]
+        },
+        {
+            "name": "Test Pair Request",
+            "id": "0x0005",
+            "operations": ["read", "write"],
+            "data": [
+                {
+                    "name": "Test Switch",
+                    "type": "bool",
+                    "offset": 0,
+                    "size": 1
+                }
+            ]
+        },
+        {
+            "name": "Test Pair Status",
+            "id": "0x0006",
+            "operations": ["read"],
+            "data": [
+                {
+                    "name": "Test Switch",
+                    "type": "bool",
+                    "offset": 0,
                     "size": 1
                 }
             ]
@@ -201,6 +235,7 @@ def get_configs_for_erd(
                 Platform.BINARY_SENSOR,
                 data_source,
                 0x0001,
+                None,
                 0,
                 1,
                 0xFF,
@@ -215,6 +250,7 @@ def get_configs_for_erd(
                 Platform.BINARY_SENSOR,
                 data_source,
                 0x0002,
+                None,
                 0,
                 1,
                 0xFF,
@@ -229,6 +265,7 @@ def get_configs_for_erd(
                 Platform.BINARY_SENSOR,
                 data_source,
                 0x0003,
+                None,
                 0,
                 1,
                 0xFF,
@@ -243,6 +280,7 @@ def get_configs_for_erd(
                 Platform.BINARY_SENSOR,
                 data_source,
                 0x0004,
+                None,
                 0,
                 1,
                 0xFF,
@@ -255,11 +293,28 @@ def get_configs_for_erd(
                 Platform.BINARY_SENSOR,
                 data_source,
                 0x0004,
+                None,
                 1,
                 1,
                 0xFF,
             ),
         ],
+        [
+            GeaSwitchConfig(
+                "test_0005_Test_Switch",
+                "test_id",
+                DEVICE_NAME,
+                "Test Pair: Test Switch",
+                Platform.SWITCH,
+                data_source,
+                0x0005,
+                0x0006,
+                0,
+                1,
+                0xFF,
+            )
+        ],
+        [],  # Should be empty since 0x0006 is a status ERD
     ]
 
     return configs[erd]
@@ -336,3 +391,13 @@ class TestERDFactory:
 
         await when_configs_are_created_for_erd(0x0010, erd_factory)
         the_error_log_should_be("Could not find ERD 0x0010", capture_errors)
+
+    async def test_creates_config_for_paired_erd(
+        self, data_source, erd_factory
+    ) -> None:
+        """Test factory correctly creates config for a paired ERD."""
+
+        config_list = await when_configs_are_created_for_erd(0x0005, erd_factory)
+        empty_list = await when_configs_are_created_for_erd(0x0006, erd_factory)
+        await the_configs_should_be_correct_for_erd(0x0005, config_list, data_source)
+        await the_configs_should_be_correct_for_erd(0x0006, empty_list, data_source)

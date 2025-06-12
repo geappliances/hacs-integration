@@ -19,6 +19,7 @@ from .common import (
     given_integration_is_initialized,
     given_the_appliance_api_erd_defs_are,
     given_the_appliance_api_is,
+    given_the_status_pair_dict_is,
     the_mqtt_topic_value_should_be,
     when_the_erd_is_set_to,
 )
@@ -52,7 +53,9 @@ APPLIANCE_API_JSON = """
                 "1": {
                     "required": [
                         { "erd": "0x0002", "name": "Multi Field Test", "length": 2 },
-                        { "erd": "0x0004", "name": "Bitfield Test", "length": 1 }
+                        { "erd": "0x0004", "name": "Bitfield Test", "length": 1 },
+                        { "erd": "0x0005", "name": "Test Pair Status", "length": 1 },
+                        { "erd": "0x0006", "name": "Test Pair Request", "length": 1 }
                     ],
                     "features": []
                 }
@@ -145,9 +148,50 @@ APPLIANCE_API_DEFINTION_JSON = """
                     "size": 1
                 }
             ]
+        },
+        {
+            "name": "Test Pair Status",
+            "id": "0x0005",
+            "operations": ["read", "write"],
+            "data": [
+                {
+                    "name": "Test Switch",
+                    "type": "bool",
+                    "offset": 0,
+                    "size": 1
+                }
+            ]
+        },
+        {
+            "name": "Test Pair Request",
+            "id": "0x0006",
+            "operations": ["read", "write"],
+            "data": [
+                {
+                    "name": "Test Switch",
+                    "type": "bool",
+                    "offset": 0,
+                    "size": 1
+                }
+            ]
         }
     ]
 }"""
+
+STATUS_PAIR_DICT = """
+{
+    "0x0005": {
+        "name": "Test Pair",
+        "status": 5,
+        "request": 6
+    },
+    "0x0006": {
+        "name": "Test Pair",
+        "status": 5,
+        "request": 6
+    }
+}
+"""
 
 
 @pytest.fixture(autouse=True)
@@ -156,6 +200,7 @@ async def initialize(hass: HomeAssistant, mqtt_mock: MqttMockHAClient) -> None:
     await given_integration_is_initialized(hass, mqtt_mock)
     given_the_appliance_api_is(APPLIANCE_API_JSON, hass)
     given_the_appliance_api_erd_defs_are(APPLIANCE_API_DEFINTION_JSON, hass)
+    given_the_status_pair_dict_is(STATUS_PAIR_DICT, hass)
     await when_the_erd_is_set_to(0x0092, "0000 0001 0000 0001", hass)
     await when_the_erd_is_set_to(0x0093, "0000 0001 0000 0000", hass)
 
@@ -293,3 +338,30 @@ class TestSwitch:
         the_switch_state_should_be(
             "switch.removal_test_removal_test", STATE_UNKNOWN, hass
         )
+
+    async def test_publishes_to_request_erd_and_does_not_update_paired_switch(
+        self, hass: HomeAssistant, mqtt_mock: MqttMockHAClient
+    ) -> None:
+        """Test paired switch, when set, updates the request ERD, but not the status ERD or switch itself."""
+        await when_the_erd_is_set_to(0x0005, "00", hass)
+        await when_the_erd_is_set_to(0x0006, "00", hass)
+        the_switch_state_should_be("switch.test_pair_test_switch", STATE_OFF, hass)
+
+        await when_the_switch_is_turned_on("switch.test_pair_test_switch", hass)
+        the_mqtt_topic_value_should_be(0x0006, "01", mqtt_mock)
+        the_switch_state_should_be("switch.test_pair_test_switch", STATE_OFF, hass)
+
+        await when_the_switch_is_turned_off("switch.test_pair_test_switch", hass)
+        the_mqtt_topic_value_should_be(0x0006, "00", mqtt_mock)
+        the_switch_state_should_be("switch.test_pair_test_switch", STATE_OFF, hass)
+
+    async def test_status_erd_updates_paired_switch(
+        self, hass: HomeAssistant, mqtt_mock: MqttMockHAClient
+    ) -> None:
+        """Test switch updates paired switch on status ERD update."""
+        await when_the_erd_is_set_to(0x0005, "00", hass)
+        await when_the_erd_is_set_to(0x0006, "00", hass)
+        the_switch_state_should_be("switch.test_pair_test_switch", STATE_OFF, hass)
+
+        await when_the_erd_is_set_to(0x0005, "01", hass)
+        the_switch_state_should_be("switch.test_pair_test_switch", STATE_ON, hass)

@@ -97,6 +97,22 @@ APPLIANCE_API_JSON = """
                     "features": []
                 }
             }
+        },
+        "2": {
+            "featureType": "1",
+            "versions": {
+                "1": {
+                    "required": [
+                        { "erd": "0x0006", "name": "Test Request", "length": 1 },
+                        { "erd": "0x0007", "name": "Test Status", "length": 1 },
+                        { "erd": "0x0008", "name": "Test Two Requested", "length": 1 },
+                        { "erd": "0x0009", "name": "Test Two Actual", "length": 1 },
+                        { "erd": "0x000A", "name": "Test Three Desired", "length": 1 },
+                        { "erd": "0x000B", "name": "Test Three State", "length": 1 }
+                    ],
+                    "features": []
+                }
+            }
         }
     }
 }"""
@@ -189,9 +205,122 @@ APPLIANCE_API_DEFINTION_JSON = """
                     "size": 1
                 }
             ]
+        },
+        {
+            "name": "Test Request",
+            "id": "0x0006",
+            "operations": ["read", "write"],
+            "data": [
+                {
+                    "name": "Test Request",
+                    "type": "bool",
+                    "offset": 0,
+                    "size": 1
+                }
+            ]
+        },
+        {
+            "name": "Test Status",
+            "id": "0x0007",
+            "operations": ["read"],
+            "data": [
+                {
+                    "name": "Test Status",
+                    "type": "bool",
+                    "offset": 0,
+                    "size": 1
+                }
+            ]
+        },
+        {
+            "name": "Test Two Requested",
+            "id": "0x0008",
+            "operations": ["read", "write"],
+            "data": [
+                {
+                    "name": "Test Two",
+                    "type": "bool",
+                    "offset": 0,
+                    "size": 1
+                }
+            ]
+        },
+        {
+            "name": "Test Two Actual",
+            "id": "0x0009",
+            "operations": ["read"],
+            "data": [
+                {
+                    "name": "Test Two",
+                    "type": "bool",
+                    "offset": 0,
+                    "size": 1
+                }
+            ]
+        },
+        {
+            "name": "Test Three Desired",
+            "id": "0x000A",
+            "operations": ["read", "write"],
+            "data": [
+                {
+                    "name": "Test Three",
+                    "type": "bool",
+                    "offset": 0,
+                    "size": 1
+                }
+            ]
+        },
+        {
+            "name": "Test Three State",
+            "id": "0x000B",
+            "operations": ["read"],
+            "data": [
+                {
+                    "name": "Test Three",
+                    "type": "bool",
+                    "offset": 0,
+                    "size": 1
+                }
+            ]
         }
     ]
 }"""
+
+STATUS_PAIR_DICT = """
+{
+    "0x0006": {
+        "name": "Test",
+        "request": 6,
+        "status": 7
+    },
+    "0x0007": {
+        "name": "Test",
+        "request": 6,
+        "status": 7
+    },
+    "0x0008": {
+        "name": "Test Two",
+        "request": 8,
+        "status": 9
+    },
+    "0x0009": {
+        "name": "Test Two",
+        "request": 8,
+        "status": 9
+    },
+    "0x000A": {
+        "name": "Test Three",
+        "request": 10,
+        "status": 11
+    },
+    "0x000B": {
+        "name": "Test Three",
+        "request": 10,
+        "status": 11
+    }
+}
+"""
 
 
 @pytest.fixture
@@ -327,6 +456,13 @@ def the_appliance_api_erd_defs_should_be(
         data_source._appliance_api_erd_definitions
         == json.loads(appliance_api_erd_defs)["erds"]
     )
+
+
+def the_status_pair_dict_should_be(
+    data_source: DataSource, status_pair_str: str
+) -> None:
+    """Assert the status pair dictionary contains the given ERD and status pair."""
+    assert data_source._status_pair_dict == json.loads(status_pair_str)
 
 
 def the_device_should_exist(device_name: str, data_source: DataSource) -> None:
@@ -480,6 +616,31 @@ class TestDataSource:
         )
         the_appliance_api_should_be(APPLIANCE_API_JSON, data_source)
         the_appliance_api_erd_defs_should_be(APPLIANCE_API_DEFINTION_JSON, data_source)
+
+    async def test_parses_status_pair_dict_on_init(self, mqtt_client_mock) -> None:
+        """Test data source parses the status pair dictionary on init."""
+        data_source = DataSource(
+            APPLIANCE_API_JSON, APPLIANCE_API_DEFINTION_JSON, mqtt_client_mock
+        )
+        the_status_pair_dict_should_be(data_source, STATUS_PAIR_DICT)
+
+    async def test_retrieves_status_pair_for_erd(self, mqtt_client_mock) -> None:
+        """Test data source retrieves the status pair for a given ERD."""
+        data_source = DataSource(
+            APPLIANCE_API_JSON, APPLIANCE_API_DEFINTION_JSON, mqtt_client_mock
+        )
+        status_pair = await data_source.get_erd_status_pair(0x0006)
+        assert status_pair == {
+            "name": "Test",
+            "request": 6,
+            "status": 7,
+        }
+        status_pair = await data_source.get_erd_status_pair(0x0007)
+        assert status_pair == {
+            "name": "Test",
+            "request": 6,
+            "status": 7,
+        }
 
     async def test_adds_device(self, data_source) -> None:
         """Test data source adds a device to the data."""

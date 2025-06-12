@@ -104,6 +104,7 @@ class GeaSelect(SelectEntity, GeaEntity):
         self._enum_vals = config.enum_vals
         self._attr_options = list(config.enum_vals.values())
         self._erd = config.erd
+        self._status_erd = config.status_erd or config.erd
         self._device_name = config.device_name
         self._data_source = config.data_source
         self._offset = config.offset
@@ -118,18 +119,18 @@ class GeaSelect(SelectEntity, GeaEntity):
 
     async def async_added_to_hass(self) -> None:
         """Set initial state from ERD and set up callback for updates."""
-        value = await self._data_source.erd_read(self._device_name, self._erd)
+        value = await self._data_source.erd_read(self._device_name, self._status_erd)
         await self.erd_updated(value)
 
         await self._data_source.erd_subscribe(
-            self._device_name, self._erd, self.erd_updated
+            self._device_name, self._status_erd, self.erd_updated
         )
         await super().async_added_to_hass()
 
     async def async_will_remove_from_hass(self) -> None:
         """Unsubscribe from the ERD."""
         await self._data_source.erd_unsubscribe(
-            self._device_name, self._erd, self.erd_updated
+            self._device_name, self._status_erd, self.erd_updated
         )
 
     @callback

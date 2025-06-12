@@ -11,6 +11,7 @@ from .common import (
     given_integration_is_initialized,
     given_the_appliance_api_erd_defs_are,
     given_the_appliance_api_is,
+    given_the_status_pair_dict_is,
     the_mqtt_topic_value_should_be,
     when_the_erd_is_set_to,
 )
@@ -44,7 +45,9 @@ APPLIANCE_API_JSON = """
                 "1": {
                     "required": [
                         { "erd": "0x0002", "name": "Multi Field Test", "length": 2 },
-                        { "erd": "0x0003", "name": "Bigger Enum Test", "length": 2 }
+                        { "erd": "0x0003", "name": "Bigger Enum Test", "length": 2 },
+                        { "erd": "0x0005", "name": "Test Pair Status", "length": 1 },
+                        { "erd": "0x0006", "name": "Test Pair Request", "length": 1 }
                     ],
                     "features": []
                 }
@@ -138,9 +141,58 @@ APPLIANCE_API_DEFINTION_JSON = """
                     "size": 1
                 }
             ]
+        },
+        {
+            "name": "Test Pair Status",
+            "id": "0x0005",
+            "operations": ["read", "write"],
+            "data": [
+                {
+                    "name": "Test Select",
+                    "type": "enum",
+                    "values": {
+                        "0": "Off",
+                        "1": "On"
+                    },
+                    "offset": 0,
+                    "size": 1
+                }
+            ]
+        },
+        {
+            "name": "Test Pair Request",
+            "id": "0x0006",
+            "operations": ["read", "write"],
+            "data": [
+                {
+                    "name": "Test Select",
+                    "type": "enum",
+                    "values": {
+                        "0": "Off",
+                        "1": "On"
+                    },
+                    "offset": 0,
+                    "size": 1
+                }
+            ]
         }
     ]
 }"""
+
+STATUS_PAIR_DICT = """
+{
+    "0x0005": {
+        "name": "Test Pair",
+        "status": 5,
+        "request": 6
+    },
+    "0x0006": {
+        "name": "Test Pair",
+        "status": 5,
+        "request": 6
+    }
+}
+"""
 
 
 @pytest.fixture(autouse=True)
@@ -149,6 +201,7 @@ async def initialize(hass: HomeAssistant, mqtt_mock: MqttMockHAClient) -> None:
     await given_integration_is_initialized(hass, mqtt_mock)
     given_the_appliance_api_is(APPLIANCE_API_JSON, hass)
     given_the_appliance_api_erd_defs_are(APPLIANCE_API_DEFINTION_JSON, hass)
+    given_the_status_pair_dict_is(STATUS_PAIR_DICT, hass)
     await when_the_erd_is_set_to(0x0092, "0000 0001 0000 0001", hass)
     await when_the_erd_is_set_to(0x0093, "0000 0001 0000 0000", hass)
 
@@ -237,3 +290,30 @@ class TestSelect:
         the_select_value_should_be(
             "select.removal_test_removal_test", STATE_UNKNOWN, hass
         )
+
+    async def test_publishes_to_request_erd_and_does_not_update_paired_select(
+        self, hass: HomeAssistant, mqtt_mock: MqttMockHAClient
+    ) -> None:
+        """Test paired select, when set, updates the request ERD, but not the status ERD or select itself."""
+        await when_the_erd_is_set_to(0x0005, "00", hass)
+        await when_the_erd_is_set_to(0x0006, "00", hass)
+        the_select_value_should_be("select.test_pair_test_select", "Off", hass)
+
+        await when_the_select_is_set_to("select.test_pair_test_select", "On", hass)
+        the_mqtt_topic_value_should_be(0x0006, "01", mqtt_mock)
+        the_select_value_should_be("select.test_pair_test_select", "Off", hass)
+
+        await when_the_select_is_set_to("select.test_pair_test_select", "Off", hass)
+        the_mqtt_topic_value_should_be(0x0006, "00", mqtt_mock)
+        the_select_value_should_be("select.test_pair_test_select", "Off", hass)
+
+    async def test_status_erd_updates_paired_select(
+        self, hass: HomeAssistant, mqtt_mock: MqttMockHAClient
+    ) -> None:
+        """Test select updates paired select on status ERD update."""
+        await when_the_erd_is_set_to(0x0005, "00", hass)
+        await when_the_erd_is_set_to(0x0006, "00", hass)
+        the_select_value_should_be("select.test_pair_test_select", "Off", hass)
+
+        await when_the_erd_is_set_to(0x0005, "01", hass)
+        the_select_value_should_be("select.test_pair_test_select", "On", hass)

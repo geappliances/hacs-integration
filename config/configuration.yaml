@@ -12,5 +12,5 @@ logger:
     custom_components.integration_blueprint: debug
 
 debugpy:
-  start: false
+  start: true
   wait: false
